@@ -1724,6 +1724,13 @@ class Mapper(
                 # it now in the order in which it corresponds to the
                 # Table / selectable
                 key, prop = explicit_col_props_by_column[column]
+                if self._should_exclude(
+                    column.key,
+                    key,
+                    local=self.local_table.c.contains_column(column),
+                    column=column,
+                ):
+                    continue
                 self._configure_property(key, prop, init=False)
                 continue
 

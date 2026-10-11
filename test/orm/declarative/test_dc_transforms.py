@@ -428,6 +428,22 @@ class DCTransformsTest(AssertsCompiledSQL, fixtures.TestBase):
         eq_(a1.data, "d1")
         eq_(a1.data2, "d2")
 
+    def test_exclude_properties_with_default(
+        self, dc_decl_base: Type[MappedAsDataclass]
+    ):
+        # issue #13650 - a dataclass column that provides a ``default`` and is
+        # listed in ``exclude_properties`` must not be mapped, whether or not
+        # the column reaches the mapper via the explicit-properties path.
+        class Example(dc_decl_base):
+            __tablename__ = "example_13650"
+            __mapper_args__ = {"exclude_properties": ["excluded"]}
+
+            id: Mapped[int] = mapped_column(primary_key=True)
+            excluded: Mapped[Optional[str]] = mapped_column(default=None)
+
+        assert "excluded" not in Example.__mapper__.attrs
+        assert "id" in Example.__mapper__.attrs
+
     def test_default_factory_vs_collection_class(
         self, dc_decl_base: Type[MappedAsDataclass]
     ):
