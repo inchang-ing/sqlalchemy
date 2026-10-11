@@ -5068,10 +5068,14 @@ class PGDialect(default._BackendsMultiReflection, default.DefaultDialect):
         # optionally quoted token
         qtoken = r'(?:"(?:[^"]|"")+"|[\w]+?)'
 
+        # PERIOD clause used by PostgreSQL 18 temporal foreign keys, e.g.
+        # "FOREIGN KEY (parent_id, PERIOD valid) REFERENCES t(id, PERIOD valid)"
+        pperiod = rf'PERIOD\s+(?:"(?:[^"]|"")+"|[\w]+)'
+
         # https://www.postgresql.org/docs/current/static/sql-createtable.html
         return re.compile(
             r"FOREIGN KEY \((.*?)\) "
-            rf"REFERENCES (?:({qtoken})\.)?({qtoken})\(((?:{qtoken}(?: *, *)?)+)\)"  # noqa: E501
+            rf"REFERENCES (?:({qtoken})\.)?({qtoken})\(((?:(?:{pperiod}|{qtoken})(?: *, *)?)+)\)"  # noqa: E501
             r"[\s]?(MATCH (FULL|PARTIAL|SIMPLE)+)?"
             r"[\s]?(?:ON (UPDATE|DELETE) "
             r"(CASCADE|RESTRICT|NO ACTION|"
@@ -5102,6 +5106,18 @@ class PGDialect(default._BackendsMultiReflection, default.DefaultDialect):
             _,
             initially,
         ) = m
+
+        # PostgreSQL 18 temporal foreign keys reference a PERIOD clause; strip
+        # the "PERIOD " prefix so the period name is reflected as a regular
+        # column on both the constrained and referred sides.
+        constrained_columns = ", ".join(
+            re.sub(r"(?i)^PERIOD\s+", "", col.strip())
+            for col in re.split(r"\s*,\s*", constrained_columns)
+        )
+        referred_columns = ", ".join(
+            re.sub(r"(?i)^PERIOD\s+", "", col.strip())
+            for col in re.split(r"\s*,\s*", referred_columns)
+        )
 
         onupdate = (
             upddelval1

@@ -82,6 +82,51 @@ class DialectTest(fixtures.TestBase):
         with expect_raises(TypeError):
             Range(None, None, "()", True)  # type: ignore
 
+    def test_parse_fk_temporal_period(self):
+        # issue #13664 - PostgreSQL 18 temporal foreign keys reference a
+        # PERIOD clause; reflection must not raise and the period name is
+        # reflected as a regular referred column.
+        dialect = postgresql.PGDialect()
+        condef = (
+            "FOREIGN KEY (parent_id, PERIOD valid) "
+            "REFERENCES t(id, PERIOD valid)"
+        )
+        constrained_columns, _, _, referred_columns, *_ = dialect._parse_fk(
+            condef
+        )
+        eq_(constrained_columns, "parent_id, valid")
+        eq_(referred_columns, "id, valid")
+
+    def test_parse_fk_regression(self):
+        # guard the temporal-FK regex change against normal / quoted /
+        # schema-qualified / MATCH variants.
+        dialect = postgresql.PGDialect()
+        cases = [
+            (
+                "FOREIGN KEY (a, b) REFERENCES t(c, d)",
+                ("a, b", "t", "c, d"),
+            ),
+            (
+                'FOREIGN KEY ("A", "B") REFERENCES "T"("C", "D")',
+                ('"A", "B"', '"T"', '"C", "D"'),
+            ),
+            (
+                "FOREIGN KEY (a) REFERENCES s.t(c) MATCH FULL",
+                ("a", "t", "c"),
+            ),
+            (
+                "FOREIGN KEY (a) REFERENCES t(c) ON DELETE CASCADE",
+                ("a", "t", "c"),
+            ),
+        ]
+        for condef, (cc, rt, rc) in cases:
+            constrained, _, referred_table, referred, *_ = dialect._parse_fk(
+                condef
+            )
+            eq_(constrained, cc)
+            eq_(referred_table, rt)
+            eq_(referred, rc)
+
     def test_range_frozen(self):
         r1 = Range(None, 5)
         eq_(dataclasses.astuple(r1), (None, 5, "[)", False))
