@@ -3,6 +3,7 @@ import dataclasses
 import datetime
 import logging
 import logging.handlers
+import pytest
 
 from sqlalchemy import BigInteger
 from sqlalchemy import bindparam
@@ -81,6 +82,35 @@ class DialectTest(fixtures.TestBase):
 
         with expect_raises(TypeError):
             Range(None, None, "()", True)  # type: ignore
+
+    def test_asyncpg_dataerror_translation(self):
+        # issue #13636 - asyncpg SQLSTATE class 22 (data exceptions) must
+        # raise sqlalchemy.exc.DataError, matching the psycopg dialect.
+        asyncpg = pytest.importorskip("asyncpg")
+        adapt = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi(asyncpg)
+        mapping = adapt._asyncpg_error_translate
+        err = asyncpg.exceptions.StringDataRightTruncationError(
+            "value too long for type character varying(5)"
+        )
+        translated = None
+        for cls in type(err).__mro__:
+            if cls in mapping:
+                translated = mapping[cls]
+                break
+        assert translated is not None, (
+            "asyncpg DataError was not mapped to a SQLAlchemy error"
+        )
+        # the same loop used by _handle_exception_no_connection produces an
+        # emulated DBAPI exception; the engine then wraps it via
+        # DBAPIError.instance(), which resolves the class name "DataError"
+        # to sqlalchemy.exc.DataError.  A user catching exc.DataError must see
+        # the asyncpg data exception (issue #13636).
+        raised = translated("value too long for type character varying(5)", err)
+        assert type(raised).__name__ == "DataError"
+        wrapped = exc.DBAPIError.instance(
+            None, None, raised, dbapi_base_err=adapt.Error
+        )
+        assert isinstance(wrapped, exc.DataError), type(wrapped)
 
     def test_range_frozen(self):
         r1 = Range(None, 5)

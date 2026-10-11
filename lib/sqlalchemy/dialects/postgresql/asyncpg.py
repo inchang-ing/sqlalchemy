@@ -1056,6 +1056,7 @@ class AsyncAdapt_asyncpg_dbapi(AsyncAdapt_dbapi_module):
 
         return {
             asyncpg.exceptions.IntegrityConstraintViolationError: self.IntegrityError,  # noqa: E501
+            asyncpg.exceptions.DataError: self.DataError,
             asyncpg.exceptions.PostgresError: self.Error,
             asyncpg.exceptions.SyntaxOrAccessError: self.ProgrammingError,
             asyncpg.exceptions.InterfaceError: self.InterfaceError,
